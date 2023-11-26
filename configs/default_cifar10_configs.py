@@ -36,6 +36,7 @@ def get_default_configs():
   evaluate.enable_loss = True
   evaluate.enable_bpd = False
   evaluate.bpd_dataset = 'test'
+  evaluate.use_bpd = True
 
   # data
   config.data = data = ml_collections.ConfigDict()

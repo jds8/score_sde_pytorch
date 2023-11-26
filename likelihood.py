@@ -66,7 +66,7 @@ def get_likelihood_fn(sde, inverse_scaler, hutchinson_type='Rademacher',
   def div_fn(model, x, t, noise):
     return get_div_fn(lambda xx, tt: drift_fn(model, xx, tt))(x, t, noise)
 
-  def likelihood_fn(model, data):
+  def likelihood_fn(model, data, use_bpd):
     """Compute an unbiased estimate to the log-likelihood in bits/dim.
 
     Args:
@@ -102,12 +102,16 @@ def get_likelihood_fn(sde, inverse_scaler, hutchinson_type='Rademacher',
       z = mutils.from_flattened_numpy(zp[:-shape[0]], shape).to(data.device).type(torch.float32)
       delta_logp = mutils.from_flattened_numpy(zp[-shape[0]:], (shape[0],)).to(data.device).type(torch.float32)
       prior_logp = sde.prior_logp(z)
-      bpd = -(prior_logp + delta_logp) / np.log(2)
-      N = np.prod(shape[1:])
-      bpd = bpd / N
-      # A hack to convert log-likelihoods to bits/dim
-      offset = 7. - inverse_scaler(-1.)
-      bpd = bpd + offset
-      return bpd, z, nfe
+      if use_bpd:
+        bpd = -(prior_logp + delta_logp) / np.log(2)
+        N = np.prod(shape[1:])
+        bpd = bpd / N
+        # A hack to convert log-likelihoods to bits/dim
+        offset = 7. - inverse_scaler(-1.)
+        bpd = bpd + offset
+        output = bpd
+      else:
+        output = prior_logp + delta_logp
+      return output, z, nfe
 
   return likelihood_fn

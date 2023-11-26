@@ -148,15 +148,18 @@ def get_score_fn(sde, model, train=False, continuous=False):
         # The maximum value of time embedding is assumed to 999 for
         # continuously-trained models.
         labels = t * 999
-        score = model_fn(x, labels)
+        model_out = model_fn(x, labels)
         std = sde.marginal_prob(torch.zeros_like(x), t)[1]
       else:
         # For VP-trained models, t=0 corresponds to the lowest noise level
         labels = t * (sde.N - 1)
-        score = model_fn(x, labels)
+        model_out = model_fn(x, labels)
         std = sde.sqrt_1m_alphas_cumprod.to(labels.device)[labels.long()]
 
-      score = -score / std[:, None, None, None]
+      # score = -model_out / std[:, None, None, None]
+      # TODO: REMOVE
+      score = -model_out / std
+      assert score.shape == model_out.shape
       return score
 
   elif isinstance(sde, sde_lib.VESDE):

@@ -108,6 +108,7 @@ class DDPM(nn.Module):
     self.scale_by_sigma = config.model.scale_by_sigma
 
   def forward(self, x, labels):
+    import pdb; pdb.set_trace()
     modules = self.all_modules
     m_idx = 0
     if self.conditional:

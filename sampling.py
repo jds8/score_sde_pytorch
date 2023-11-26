@@ -190,6 +190,7 @@ class EulerMaruyamaPredictor(Predictor):
 @register_predictor(name='reverse_diffusion')
 class ReverseDiffusionPredictor(Predictor):
   def __init__(self, sde, score_fn, probability_flow=False):
+    import pdb; pdb.set_trace()
     super().__init__(sde, score_fn, probability_flow)
 
   def update_fn(self, x, t):

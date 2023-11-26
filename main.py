@@ -15,13 +15,13 @@
 
 """Training and evaluation"""
 
+import wandb
 import run_lib
 from absl import app
 from absl import flags
 from ml_collections.config_flags import config_flags
 import logging
 import os
-import tensorflow as tf
 
 FLAGS = flags.FLAGS
 
@@ -29,15 +29,19 @@ config_flags.DEFINE_config_file(
   "config", None, "Training configuration.", lock_config=True)
 flags.DEFINE_string("workdir", None, "Work directory.")
 flags.DEFINE_enum("mode", None, ["train", "eval"], "Running mode: train or eval")
+flags.DEFINE_bool("no_wandb", None, "Save to wandb: 1 or 0")
 flags.DEFINE_string("eval_folder", "eval",
                     "The folder name for storing evaluation results")
-flags.mark_flags_as_required(["workdir", "config", "mode"])
+flags.mark_flags_as_required(["workdir", "config", "mode", "no_wandb"])
 
 
 def main(argv):
+  if not FLAGS.no_wandb:
+    wandb.init(
+      project="score_sde_pytorch",
+      config=FLAGS.config
+    )
   if FLAGS.mode == "train":
-    # Create the working directory
-    tf.io.gfile.makedirs(FLAGS.workdir)
     # Set logger so that it outputs to both console and file
     # Make logging work for both disk and Google Cloud Storage
     gfile_stream = open(os.path.join(FLAGS.workdir, 'stdout.txt'), 'w')
@@ -48,7 +52,7 @@ def main(argv):
     logger.addHandler(handler)
     logger.setLevel('INFO')
     # Run the training pipeline
-    run_lib.train(FLAGS.config, FLAGS.workdir)
+    run_lib.train(FLAGS.config, FLAGS.workdir, FLAGS.no_wandb)
   elif FLAGS.mode == "eval":
     # Run the evaluation pipeline
     run_lib.evaluate(FLAGS.config, FLAGS.workdir, FLAGS.eval_folder)
