@@ -179,52 +179,6 @@ def train(config, workdir, no_wandb):
       continuous=continuous
     )
     t_eps = 1e-5
-    score_function_heat_map(
-      lambda x, time: score_fn(
-        x=x.reshape(-1, 1, 1),
-        t=time.reshape(-1),
-      ),
-      step,
-      t_eps=t_eps,
-      device=batch.device,
-      mu=config.training.mu,
-      sigma=config.training.sigma,
-      make_gif=False,
-    )
-    # score_function_heat_map(
-    #   lambda x, time: score_fn(
-    #     x=x.reshape(-1, 1),
-    #     t=time.reshape(-1, 1),
-    #   ),
-    #   step,
-    #   t_eps=t_eps,
-    #   device=batch.device,
-    #   mu=config.training.mu,
-    #   sigma=config.training.sigma,
-    #   make_gif=False,
-    # )
-
-    t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - t_eps) + t_eps
-    model_output = score_fn(x=batch, t=t.reshape(-1))
-    # model_output = score_fn(x=batch.reshape(-1, 1, 1, 1), t=t.reshape(-1))
-    compare_score(
-      x=batch,
-      time=t,
-      model_output=model_output,
-      cfg=config,
-      no_wandb=no_wandb,
-    )
-
-    # t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - t_eps) + t_eps
-    # model_output = score_fn(x=batch.reshape(-1, 1), t=t.reshape(-1, 1))
-    # compare_score(
-    #   x=batch,
-    #   time=t,
-    #   model_output=model_output,
-    #   cfg=config,
-    #   no_wandb=no_wandb,
-    # )
-
     # Save a temporary checkpoint to resume training after pre-emption periodically
     if step != 0 and step % config.training.snapshot_freq_for_preemption == 0:
       save_checkpoint(checkpoint_meta_dir, state)
@@ -249,6 +203,52 @@ def train(config, workdir, no_wandb):
       # Save the checkpoint.
       save_step = step // config.training.snapshot_freq
       save_checkpoint(os.path.join(checkpoint_dir, f'checkpoint_{save_step}.pth'), state)
+
+      score_function_heat_map(
+        lambda x, time: score_fn(
+          x=x.reshape(-1, 1, 1),
+          t=time.reshape(-1),
+        ),
+        step,
+        t_eps=t_eps,
+        device=batch.device,
+        mu=config.training.mu,
+        sigma=config.training.sigma,
+        make_gif=False,
+      )
+      # score_function_heat_map(
+      #   lambda x, time: score_fn(
+      #     x=x.reshape(-1, 1),
+      #     t=time.reshape(-1, 1),
+      #   ),
+      #   step,
+      #   t_eps=t_eps,
+      #   device=batch.device,
+      #   mu=config.training.mu,
+      #   sigma=config.training.sigma,
+      #   make_gif=False,
+      # )
+
+      t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - t_eps) + t_eps
+      model_output = score_fn(x=batch, t=t.reshape(-1))
+      # model_output = score_fn(x=batch.reshape(-1, 1, 1, 1), t=t.reshape(-1))
+      compare_score(
+        x=batch,
+        time=t,
+        model_output=model_output,
+        cfg=config,
+        no_wandb=no_wandb,
+      )
+
+      # t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - t_eps) + t_eps
+      # model_output = score_fn(x=batch.reshape(-1, 1), t=t.reshape(-1, 1))
+      # compare_score(
+      #   x=batch,
+      #   time=t,
+      #   model_output=model_output,
+      #   cfg=config,
+      #   no_wandb=no_wandb,
+      # )
 
       # Generate and save samples
       if config.training.snapshot_sampling:
