@@ -93,12 +93,13 @@ class SDE(abc.ABC):
       def sde(self, x, t):
         """Create the drift and diffusion functions for the reverse SDE/ODE."""
         drift, diffusion = sde_fn(x, t)
-        # score = score_fn(x, t)
+        score = score_fn(x, t)
 
         # TODO: remove
-        score = score_fn(x.reshape(-1, 1), t.reshape(-1, 1)).reshape(drift.shape)
+        # score = score_fn(x.reshape(-1, 1), t.reshape(-1, 1)).reshape(drift.shape)
 
-        drift = drift - diffusion[:, None, None, None] ** 2 * score * (0.5 if self.probability_flow else 1.)
+        # drift = drift - diffusion[:, None, None, None] ** 2 * score * (0.5 if self.probability_flow else 1.)
+        drift = drift - diffusion.reshape(drift.shape) ** 2 * score * (0.5 if self.probability_flow else 1.)
         # Set the diffusion function to zero for ODEs.
         diffusion = 0. if self.probability_flow else diffusion
         return drift, diffusion
@@ -138,13 +139,15 @@ class VPSDE(SDE):
 
   def sde(self, x, t):
     beta_t = self.beta_0 + t * (self.beta_1 - self.beta_0)
-    drift = -0.5 * beta_t[:, None, None, None] * x
+    # drift = -0.5 * beta_t[:, None, None, None] * x
+    drift = -0.5 * beta_t.reshape(x.shape) * x
     diffusion = torch.sqrt(beta_t)
     return drift, diffusion
 
   def marginal_prob(self, x, t):
     log_mean_coeff = -0.25 * t ** 2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
-    mean = torch.exp(log_mean_coeff[:, None, None, None]) * x
+    # mean = torch.exp(log_mean_coeff[:, None, None, None]) * x
+    mean = torch.exp(log_mean_coeff.reshape(x.shape)) * x
     std = torch.sqrt(1. - torch.exp(2. * log_mean_coeff))
     return mean, std
 

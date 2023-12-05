@@ -52,9 +52,23 @@ class DDPM(nn.Module):
     self.num_resolutions = num_resolutions = len(ch_mult)
     self.all_resolutions = all_resolutions = [config.data.image_size // (2 ** i) for i in range(num_resolutions)]
 
-    AttnBlock = functools.partial(layers.AttnBlock)
+    up_mult = config.model.up_mult
+    kernel_size = config.model.kernel_size
+    padding = config.model.padding
+    num_groups = config.model.num_groups
+    AttnBlock = functools.partial(layers.AttnBlock, num_groups=num_groups)
     self.conditional = conditional = config.model.conditional
-    ResnetBlock = functools.partial(ResnetBlockDDPM, act=act, temb_dim=4 * nf, dropout=dropout)
+    # num_groups = 32
+    ResnetBlock = functools.partial(
+      ResnetBlockDDPM,
+      act=act,
+      temb_dim=4 * nf,
+      dropout=dropout,
+      num_groups=num_groups,
+      kernel_size=kernel_size,
+      padding=padding
+    )
+    modules = []
     if conditional:
       # Condition on noise levels.
       modules = [nn.Linear(nf, nf * 4)]
@@ -68,7 +82,7 @@ class DDPM(nn.Module):
     channels = config.data.num_channels
 
     # Downsampling block
-    modules.append(conv3x3(channels, nf))
+    modules.append(conv3x3(channels, nf, kernel_size=kernel_size, padding=padding))
     hs_c = [nf]
     in_ch = nf
     for i_level in range(num_resolutions):
@@ -76,39 +90,64 @@ class DDPM(nn.Module):
       for i_block in range(num_res_blocks):
         out_ch = nf * ch_mult[i_level]
         modules.append(ResnetBlock(in_ch=in_ch, out_ch=out_ch))
+        # print('added resnet block')
         in_ch = out_ch
         if all_resolutions[i_level] in attn_resolutions:
           modules.append(AttnBlock(channels=in_ch))
+          # print('added attnblock')
         hs_c.append(in_ch)
       if i_level != num_resolutions - 1:
-        modules.append(Downsample(channels=in_ch, with_conv=resamp_with_conv))
+        modules.append(Downsample(
+          channels=in_ch,
+          with_conv=resamp_with_conv,
+          kernel_size=kernel_size
+        ))
+        # print('added downsample block')
         hs_c.append(in_ch)
 
     in_ch = hs_c[-1]
     modules.append(ResnetBlock(in_ch=in_ch))
+    # print('added resnet block')
     modules.append(AttnBlock(channels=in_ch))
+    # print('added attn block')
     modules.append(ResnetBlock(in_ch=in_ch))
+    # print('added resnet block')
 
     # Upsampling block
     for i_level in reversed(range(num_resolutions)):
       for i_block in range(num_res_blocks + 1):
         out_ch = nf * ch_mult[i_level]
-        modules.append(ResnetBlock(in_ch=in_ch + hs_c.pop(), out_ch=out_ch))
+        in_channels = in_ch + hs_c.pop()
+        modules.append(ResnetBlock(in_ch=in_channels, out_ch=out_ch))
+        # print('added resnet block with {} channels'.format(in_channels))
         in_ch = out_ch
       if all_resolutions[i_level] in attn_resolutions:
         modules.append(AttnBlock(channels=in_ch))
+        # print('added attn block')
       if i_level != 0:
-        modules.append(Upsample(channels=in_ch, with_conv=resamp_with_conv))
+        modules.append(Upsample(
+          channels=in_ch,
+          with_conv=resamp_with_conv,
+          kernel_size=kernel_size,
+          padding=padding,
+          up_mult=up_mult
+        ))
+        # print('added upsample block')
 
     assert not hs_c
-    modules.append(nn.GroupNorm(num_channels=in_ch, num_groups=32, eps=1e-6))
-    modules.append(conv3x3(in_ch, channels, init_scale=0.))
+    modules.append(nn.GroupNorm(num_channels=in_ch, num_groups=num_groups, eps=1e-6))
+    modules.append(conv3x3(
+      in_ch,
+      channels,
+      kernel_size=kernel_size,
+      init_scale=0.,
+      padding=padding
+    ))
     self.all_modules = nn.ModuleList(modules)
 
     self.scale_by_sigma = config.model.scale_by_sigma
 
   def forward(self, x, labels):
-    import pdb; pdb.set_trace()
     modules = self.all_modules
     m_idx = 0
     if self.conditional:
@@ -129,22 +168,28 @@ class DDPM(nn.Module):
       # Input is in [0, 1]
       h = 2 * x - 1.
 
+    # print('starting downsampling block')
     # Downsampling block
     hs = [modules[m_idx](h)]
     m_idx += 1
     for i_level in range(self.num_resolutions):
       # Residual blocks for this resolution
       for i_block in range(self.num_res_blocks):
+        # print('invoking resnet block')
         h = modules[m_idx](hs[-1], temb)
         m_idx += 1
-        if h.shape[-1] in self.attn_resolutions:
+        # if h.shape[-1] in self.attn_resolutions:
+        if self.all_resolutions[i_level] in self.attn_resolutions:
+          # print('invoking attnblock')
           h = modules[m_idx](h)
           m_idx += 1
         hs.append(h)
       if i_level != self.num_resolutions - 1:
+        # print('invoking downsample')
         hs.append(modules[m_idx](hs[-1]))
         m_idx += 1
 
+    # print('before middle: {}'.format(h.shape))
     h = hs[-1]
     h = modules[m_idx](h, temb)
     m_idx += 1
@@ -152,17 +197,24 @@ class DDPM(nn.Module):
     m_idx += 1
     h = modules[m_idx](h, temb)
     m_idx += 1
+    # print('after middle: {}'.format(h.shape))
 
+    # print('starting upsampling block')
     # Upsampling block
     for i_level in reversed(range(self.num_resolutions)):
       for i_block in range(self.num_res_blocks + 1):
-        h = modules[m_idx](torch.cat([h, hs.pop()], dim=1), temb)
+        hs_pop = hs.pop()
+        h = modules[m_idx](torch.cat([h, hs_pop], dim=1), temb)
+        # print('invoking resnet block with dim: {}'.format(h.shape))
         m_idx += 1
-      if h.shape[-1] in self.attn_resolutions:
+      # if h.shape[-1] in self.attn_resolutions:
+      if self.all_resolutions[i_level] in self.attn_resolutions:
         h = modules[m_idx](h)
+        # print('invoking attnblock with dim: {}'.format(h.shape))
         m_idx += 1
       if i_level != 0:
         h = modules[m_idx](h)
+        # print('invoking upsample block with dim: {}'.format(h.shape))
         m_idx += 1
 
     assert not hs

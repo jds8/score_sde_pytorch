@@ -31,6 +31,9 @@ def get_config():
   training.restore_checkpoint = False
   training.mu = 0.
   training.sigma = 1.
+  training.snapshot_freq = 500
+  training.snapshot_sampling = False
+  training.likelihood_weighting = False
 
   evaluate = config.eval
   evaluate.begin_ckpt = 1
@@ -47,14 +50,16 @@ def get_config():
   sampling.predictor = 'none'
   sampling.corrector = 'none'
   sampling.noise_removal = False
+  sampling.probability_flow = True
 
   # data
   data = config.data
   data.centered = True
+  data.num_channels = 1
 
   # model
   model = config.model
-  model.name = 'toy_model'
+  model.name = 'nnet'
   model.scale_by_sigma = False
   model.ema_rate = 0.9999
   model.normalization = 'GroupNorm'
@@ -64,6 +69,12 @@ def get_config():
   model.num_res_blocks = 1
   model.attn_resolutions = (1,)
   model.resamp_with_conv = True
-  model.conditional = False
+  model.conditional = True
+  model.kernel_size = 1
+  model.padding = 0
+  model.num_groups = 1
+  model.up_mult = 1
+  model.d_model = 1
+  model.cond_dim = 1
 
   return config

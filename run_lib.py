@@ -70,11 +70,12 @@ def analytical_gaussian_score(t, x, cfg):
   score = (f * cfg.training.mu - x) / var
   return score
 
-def compare_score(x, time, model_output, cfg):
+def compare_score(x, time, model_output, cfg, no_wandb=True):
   true_sf = analytical_gaussian_score(t=time, x=x, cfg=cfg)
   sf_estimate = model_output
   error = (true_sf.squeeze() - sf_estimate.detach().squeeze()).norm()
-  wandb.log({"score error": error})
+  if not no_wandb:
+    wandb.log({"score error": error})
 
 def train(config, workdir, no_wandb):
   """Runs the training pipeline.
@@ -146,7 +147,7 @@ def train(config, workdir, no_wandb):
     # sampling_fn = sampling.get_sampling_fn(config, sde, sampling_shape, inverse_scaler, sampling_eps)
 
     # TODO: Remove
-    sampling_shape = (config.training.batch_size, 1, 1, 1)
+    sampling_shape = (config.training.batch_size, 1, 1)
     sampling_fn = sampling.get_sampling_fn(config, sde, sampling_shape, inverse_scaler, sampling_eps)
 
   num_train_steps = config.training.n_iters
@@ -161,7 +162,7 @@ def train(config, workdir, no_wandb):
     batch = scaler(batch)
 
     # TODO: Remove
-    batch = torch.randn(batch.shape[0], 1, 1, 1, device=config.device) * config.training.sigma + config.training.mu
+    batch = torch.randn(batch.shape[0], 1, 1, device=config.device) * config.training.sigma + config.training.mu
 
     # Execute one training step
     loss = train_step_fn(state, batch)
@@ -180,23 +181,50 @@ def train(config, workdir, no_wandb):
     t_eps = 1e-5
     score_function_heat_map(
       lambda x, time: score_fn(
-        x=x.reshape(-1, 1),
-        t=time.reshape(-1, 1),
+        x=x.reshape(-1, 1, 1),
+        t=time.reshape(-1),
       ),
       step,
       t_eps=t_eps,
       device=batch.device,
       mu=config.training.mu,
       sigma=config.training.sigma,
+      make_gif=False,
     )
+    # score_function_heat_map(
+    #   lambda x, time: score_fn(
+    #     x=x.reshape(-1, 1),
+    #     t=time.reshape(-1, 1),
+    #   ),
+    #   step,
+    #   t_eps=t_eps,
+    #   device=batch.device,
+    #   mu=config.training.mu,
+    #   sigma=config.training.sigma,
+    #   make_gif=False,
+    # )
+
     t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - t_eps) + t_eps
-    model_output = score_fn(x=batch.reshape(-1, 1), t=t.reshape(-1, 1))
+    model_output = score_fn(x=batch, t=t.reshape(-1))
+    # model_output = score_fn(x=batch.reshape(-1, 1, 1, 1), t=t.reshape(-1))
     compare_score(
       x=batch,
       time=t,
       model_output=model_output,
-      cfg=config
+      cfg=config,
+      no_wandb=no_wandb,
     )
+
+    # t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - t_eps) + t_eps
+    # model_output = score_fn(x=batch.reshape(-1, 1), t=t.reshape(-1, 1))
+    # compare_score(
+    #   x=batch,
+    #   time=t,
+    #   model_output=model_output,
+    #   cfg=config,
+    #   no_wandb=no_wandb,
+    # )
+
     # Save a temporary checkpoint to resume training after pre-emption periodically
     if step != 0 and step % config.training.snapshot_freq_for_preemption == 0:
       save_checkpoint(checkpoint_meta_dir, state)
@@ -208,7 +236,7 @@ def train(config, workdir, no_wandb):
       eval_batch = scaler(eval_batch)
 
       # TODO: Remove
-      eval_batch = torch.randn(eval_batch.shape[0], 1, 1, 1, device=config.device) * config.training.sigma + config.training.mu
+      eval_batch = torch.randn(eval_batch.shape[0], 1, 1, device=config.device) * config.training.sigma + config.training.mu
 
       eval_loss = eval_step_fn(state, eval_batch)
       logging.info("step: %d, eval_loss: %.5e" % (step, eval_loss.item()))
@@ -325,7 +353,7 @@ def evaluate(config,
     # sampling_fn = sampling.get_sampling_fn(config, sde, sampling_shape, inverse_scaler, sampling_eps)
 
     # TODO: Remove
-    sampling_shape = (config.training.batch_size, 1, 1, 1)
+    sampling_shape = (config.training.batch_size, 1, 1)
     sampling_fn = sampling.get_sampling_fn(config, sde, sampling_shape, inverse_scaler, sampling_eps)
 
   # Use inceptionV3 for images with resolution higher than 256.
@@ -388,7 +416,7 @@ def evaluate(config,
           eval_batch = scaler(eval_batch)
 
           # TODO: Remove
-          eval_batch = torch.randn(eval_batch.shape[0], 1, 1, 1, device=config.device) * config.training.sigma + config.training.mu
+          eval_batch = torch.randn(eval_batch.shape[0], 1, 1, device=config.device) * config.training.sigma + config.training.mu
 
           print('eval_batch: {}'.format(eval_batch.squeeze()))
           normal = torch.distributions.Normal(config.training.mu, config.training.sigma)

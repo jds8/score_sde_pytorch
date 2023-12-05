@@ -56,6 +56,10 @@ def get_default_configs():
   model.beta_max = 20.
   model.dropout = 0.
   model.embedding_type = 'fourier'
+  model.kernel_size = 3
+  model.padding = 1
+  model.num_groups = 32
+  model.up_mult = 2
 
   # optimization
   config.optim = optim = ml_collections.ConfigDict()

@@ -115,9 +115,19 @@ def ncsn_conv3x3(in_planes, out_planes, stride=1, bias=True, dilation=1, init_sc
   return conv
 
 
-def ddpm_conv3x3(in_planes, out_planes, stride=1, bias=True, dilation=1, init_scale=1., padding=1):
+def ddpm_conv3x3(
+    in_planes,
+    out_planes,
+    stride=1,
+    bias=True,
+    dilation=1,
+    init_scale=1.,
+    padding=1,
+    kernel_size=3,
+):
   """3x3 convolution with DDPM initialization."""
-  conv = nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=padding,
+  conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size,
+                   stride=stride, padding=padding,
                    dilation=dilation, bias=bias)
   conv.weight.data = default_init(init_scale)(conv.weight.data.shape)
   nn.init.zeros_(conv.bias)
@@ -513,7 +523,11 @@ class ResidualBlock(nn.Module):
 ###########################################################################
 
 def get_timestep_embedding(timesteps, embedding_dim, max_positions=10000):
-  assert len(timesteps.shape) == 1  # and timesteps.dtype == tf.int32
+  try:
+    assert len(timesteps.shape) == 1  # and timesteps.dtype == tf.int32
+  except:
+    import pdb; pdb.set_trace()
+    assert len(timesteps.shape) == 1  # and timesteps.dtype == tf.int32
   half_dim = embedding_dim // 2
   # magic number 10000 is from transformers
   emb = math.log(max_positions) / (half_dim - 1)
@@ -557,9 +571,9 @@ class NIN(nn.Module):
 
 class AttnBlock(nn.Module):
   """Channel-wise self-attention block."""
-  def __init__(self, channels):
+  def __init__(self, channels, num_groups=32):
     super().__init__()
-    self.GroupNorm_0 = nn.GroupNorm(num_groups=32, num_channels=channels, eps=1e-6)
+    self.GroupNorm_0 = nn.GroupNorm(num_groups=num_groups, num_channels=channels, eps=1e-6)
     self.NIN_0 = NIN(channels, channels)
     self.NIN_1 = NIN(channels, channels)
     self.NIN_2 = NIN(channels, channels)
@@ -582,25 +596,26 @@ class AttnBlock(nn.Module):
 
 
 class Upsample(nn.Module):
-  def __init__(self, channels, with_conv=False):
+  def __init__(self, channels, with_conv=False, kernel_size=3, padding=1, up_mult=2):
     super().__init__()
     if with_conv:
-      self.Conv_0 = ddpm_conv3x3(channels, channels)
+      self.Conv_0 = ddpm_conv3x3(channels, channels, kernel_size=kernel_size, padding=padding)
     self.with_conv = with_conv
+    self.up_mult = up_mult
 
   def forward(self, x):
     B, C, H, W = x.shape
-    h = F.interpolate(x, (H * 2, W * 2), mode='nearest')
+    h = F.interpolate(x, (H * self.up_mult, W * self.up_mult), mode='nearest')
     if self.with_conv:
       h = self.Conv_0(h)
     return h
 
 
 class Downsample(nn.Module):
-  def __init__(self, channels, with_conv=False):
+  def __init__(self, channels, with_conv=False, kernel_size=3):
     super().__init__()
     if with_conv:
-      self.Conv_0 = ddpm_conv3x3(channels, channels, stride=2, padding=0)
+      self.Conv_0 = ddpm_conv3x3(channels, channels, stride=2, padding=0, kernel_size=kernel_size)
     self.with_conv = with_conv
 
   def forward(self, x):
@@ -612,30 +627,41 @@ class Downsample(nn.Module):
     else:
       x = F.avg_pool2d(x, kernel_size=2, stride=2, padding=0)
 
-    assert x.shape == (B, C, H // 2, W // 2)
+    assert x.shape == (B, C, max(1, H // 2), max(1, W // 2))
     return x
 
 
 class ResnetBlockDDPM(nn.Module):
   """The ResNet Blocks used in DDPM."""
-  def __init__(self, act, in_ch, out_ch=None, temb_dim=None, conv_shortcut=False, dropout=0.1):
+  def __init__(
+      self,
+      act,
+      in_ch,
+      out_ch=None,
+      temb_dim=None,
+      conv_shortcut=False,
+      dropout=0.1,
+      num_groups=32,
+      kernel_size=3,
+      padding=1,
+  ):
     super().__init__()
     if out_ch is None:
       out_ch = in_ch
-    self.GroupNorm_0 = nn.GroupNorm(num_groups=32, num_channels=in_ch, eps=1e-6)
+    self.GroupNorm_0 = nn.GroupNorm(num_groups=num_groups, num_channels=in_ch, eps=1e-6)
     self.act = act
-    self.Conv_0 = ddpm_conv3x3(in_ch, out_ch)
+    self.Conv_0 = ddpm_conv3x3(in_ch, out_ch, kernel_size=kernel_size, padding=padding)
     if temb_dim is not None:
       self.Dense_0 = nn.Linear(temb_dim, out_ch)
       self.Dense_0.weight.data = default_init()(self.Dense_0.weight.data.shape)
       nn.init.zeros_(self.Dense_0.bias)
 
-    self.GroupNorm_1 = nn.GroupNorm(num_groups=32, num_channels=out_ch, eps=1e-6)
+    self.GroupNorm_1 = nn.GroupNorm(num_groups=num_groups, num_channels=out_ch, eps=1e-6)
     self.Dropout_0 = nn.Dropout(dropout)
-    self.Conv_1 = ddpm_conv3x3(out_ch, out_ch, init_scale=0.)
+    self.Conv_1 = ddpm_conv3x3(out_ch, out_ch, init_scale=0., kernel_size=kernel_size, padding=padding)
     if in_ch != out_ch:
       if conv_shortcut:
-        self.Conv_2 = ddpm_conv3x3(in_ch, out_ch)
+        self.Conv_2 = ddpm_conv3x3(in_ch, out_ch, kernel_size=kernel_size)
       else:
         self.NIN_0 = NIN(in_ch, out_ch)
     self.out_ch = out_ch
@@ -644,7 +670,11 @@ class ResnetBlockDDPM(nn.Module):
 
   def forward(self, x, temb=None):
     B, C, H, W = x.shape
-    assert C == self.in_ch
+    try:
+      assert C == self.in_ch
+    except:
+      import pdb; pdb.set_trace()
+      assert C == self.in_ch
     out_ch = self.out_ch if self.out_ch else self.in_ch
     h = self.act(self.GroupNorm_0(x))
     h = self.Conv_0(h)

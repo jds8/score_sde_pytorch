@@ -84,18 +84,21 @@ def get_sde_loss_fn(sde, train, reduce_mean=True, continuous=True, likelihood_we
     t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - eps) + eps
     z = torch.randn_like(batch)
     mean, std = sde.marginal_prob(batch, t)
-    perturbed_data = mean + std[:, None, None, None] * z
-    # score = score_fn(perturbed_data, t)
+    # perturbed_data = mean + std[:, None, None, None] * z
+    perturbed_data = mean + std.reshape(batch.shape) * z
+    score = score_fn(perturbed_data, t)
 
     # TODO: remove
-    score = score_fn(perturbed_data.reshape(-1, 1), t.reshape(-1, 1))
+    # score = score_fn(perturbed_data.reshape(-1, 1), t.reshape(-1, 1))
 
     if not likelihood_weighting:
-      losses = torch.square(score * std[:, None, None, None] + z)
+      # losses = torch.square(score * std[:, None, None, None] + z)
+      losses = torch.square(score * std.reshape(score.shape) + z)
       losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1)
     else:
       g2 = sde.sde(torch.zeros_like(batch), t)[1] ** 2
-      losses = torch.square(score + z / std[:, None, None, None])
+      # losses = torch.square(score + z / std[:, None, None, None])
+      losses = torch.square(score + z / std.reshape(z.shape))
       losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1) * g2
 
     loss = torch.mean(losses)
