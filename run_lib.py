@@ -358,7 +358,7 @@ def evaluate(config,
 
   # Use inceptionV3 for images with resolution higher than 256.
   inceptionv3 = config.data.image_size >= 256
-  inception_model = evaluation.get_inception_model(inceptionv3=inceptionv3)
+  # inception_model = evaluation.get_inception_model(inceptionv3=inceptionv3)
 
   begin_ckpt = config.eval.begin_ckpt
   logging.info("begin checkpoint: %d" % (begin_ckpt,))

@@ -36,8 +36,8 @@ def get_config():
   training.likelihood_weighting = False
 
   evaluate = config.eval
-  evaluate.begin_ckpt = 1
-  evaluate.end_ckpt = 1
+  evaluate.begin_ckpt = 200
+  evaluate.end_ckpt = 200
   evaluate.enable_sampling = True
   evaluate.num_samples = 100
   evaluate.enable_loss = False
@@ -64,16 +64,16 @@ def get_config():
   model.ema_rate = 0.9999
   model.normalization = 'GroupNorm'
   model.nonlinearity = 'swish'
-  model.nf = 1
-  model.ch_mult = (1, 1, 1, 1)
-  model.num_res_blocks = 1
-  model.attn_resolutions = (1,)
+  model.nf = 128
+  model.ch_mult = (1, 2, 2, 2)
+  model.num_res_blocks = 4
+  model.attn_resolutions = (16,)
   model.resamp_with_conv = True
   model.conditional = True
-  model.kernel_size = 1
-  model.padding = 0
-  model.num_groups = 1
-  model.up_mult = 1
+  # model.kernel_size = 1
+  # model.padding = 0
+  # model.num_groups = 1
+  # model.up_mult = 1
   model.d_model = 1
   model.cond_dim = 1
 
