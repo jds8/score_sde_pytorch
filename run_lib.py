@@ -23,8 +23,6 @@ import time
 
 import wandb
 import numpy as np
-import tensorflow as tf
-import tensorflow_gan as tfgan
 import logging
 # Keep the import below for registering all model definitions
 from models import ddpm#, ncsnv2, ncsnpp
@@ -38,14 +36,16 @@ import likelihood
 import sde_lib
 from absl import flags
 import torch
+# import tensorflow as tf
 from torch.utils import tensorboard
 from torchvision.utils import make_grid, save_image
 from utils import save_checkpoint, restore_checkpoint
+import wandb
 
 FLAGS = flags.FLAGS
 
 
-def train(config, workdir):
+def train(config, workdir, no_wandb):
   """Runs the training pipeline.
 
   Args:
@@ -160,13 +160,13 @@ def train(config, workdir):
         nrow = int(np.sqrt(sample.shape[0]))
         image_grid = make_grid(sample, nrow, padding=2)
         sample = np.clip(sample.permute(0, 2, 3, 1).cpu().numpy() * 255, 0, 255).astype(np.uint8)
-        with tf.io.gfile.GFile(
-            os.path.join(this_sample_dir, "sample.np"), "wb") as fout:
-          np.save(fout, sample)
+        # with tf.io.gfile.GFile(
+        #     os.path.join(this_sample_dir, "sample.np"), "wb") as fout:
+        #   np.save(fout, sample)
 
-        with tf.io.gfile.GFile(
-            os.path.join(this_sample_dir, "sample.png"), "wb") as fout:
-          save_image(image_grid, fout)
+        # with tf.io.gfile.GFile(
+        #     os.path.join(this_sample_dir, "sample.png"), "wb") as fout:
+        #   save_image(image_grid, fout)
 
 
 def evaluate(config,
@@ -261,7 +261,7 @@ def evaluate(config,
     # Wait if the target checkpoint doesn't exist yet
     waiting_message_printed = False
     ckpt_filename = os.path.join(checkpoint_dir, "checkpoint_{}.pth".format(ckpt))
-    while not tf.io.gfile.exists(ckpt_filename):
+    while not os.path.exists(ckpt_filename):
       if not waiting_message_printed:
         logging.warning("Waiting for the arrival of checkpoint_%d" % (ckpt,))
         waiting_message_printed = True
@@ -294,10 +294,10 @@ def evaluate(config,
 
       # Save loss values to disk or Google Cloud Storage
       all_losses = np.asarray(all_losses)
-      with tf.io.gfile.GFile(os.path.join(eval_dir, f"ckpt_{ckpt}_loss.npz"), "wb") as fout:
-        io_buffer = io.BytesIO()
-        np.savez_compressed(io_buffer, all_losses=all_losses, mean_loss=all_losses.mean())
-        fout.write(io_buffer.getvalue())
+      # with tf.io.gfile.GFile(os.path.join(eval_dir, f"ckpt_{ckpt}_loss.npz"), "wb") as fout:
+      #   io_buffer = io.BytesIO()
+      #   np.savez_compressed(io_buffer, all_losses=all_losses, mean_loss=all_losses.mean())
+      #   fout.write(io_buffer.getvalue())
 
     # Compute log-likelihoods (bits/dim) if enabled
     if config.eval.enable_bpd:
@@ -316,12 +316,12 @@ def evaluate(config,
             "ckpt: %d, repeat: %d, batch: %d, mean bpd: %6f" % (ckpt, repeat, batch_id, np.mean(np.asarray(bpds))))
           bpd_round_id = batch_id + len(ds_bpd) * repeat
           # Save bits/dim to disk or Google Cloud Storage
-          with tf.io.gfile.GFile(os.path.join(eval_dir,
-                                              f"{config.eval.bpd_dataset}_ckpt_{ckpt}_bpd_{bpd_round_id}.npz"),
-                                 "wb") as fout:
-            io_buffer = io.BytesIO()
-            np.savez_compressed(io_buffer, bpd)
-            fout.write(io_buffer.getvalue())
+          # with tf.io.gfile.GFile(os.path.join(eval_dir,
+          #                                     f"{config.eval.bpd_dataset}_ckpt_{ckpt}_bpd_{bpd_round_id}.npz"),
+          #                        "wb") as fout:
+          #   io_buffer = io.BytesIO()
+          #   np.savez_compressed(io_buffer, bpd)
+          #   fout.write(io_buffer.getvalue())
 
     # Generate samples and compute IS/FID/KID when enabled
     if config.eval.enable_sampling:
@@ -363,13 +363,13 @@ def evaluate(config,
       all_logits = []
       all_pools = []
       this_sample_dir = os.path.join(eval_dir, f"ckpt_{ckpt}")
-      stats = tf.io.gfile.glob(os.path.join(this_sample_dir, "statistics_*.npz"))
-      for stat_file in stats:
-        with tf.io.gfile.GFile(stat_file, "rb") as fin:
-          stat = np.load(fin)
-          if not inceptionv3:
-            all_logits.append(stat["logits"])
-          all_pools.append(stat["pool_3"])
+      # stats = tf.io.gfile.glob(os.path.join(this_sample_dir, "statistics_*.npz"))
+      # for stat_file in stats:
+      #   with tf.io.gfile.GFile(stat_file, "rb") as fin:
+      #     stat = np.load(fin)
+      #     if not inceptionv3:
+      #       all_logits.append(stat["logits"])
+      #     all_pools.append(stat["pool_3"])
 
       if not inceptionv3:
         all_logits = np.concatenate(all_logits, axis=0)[:config.eval.num_samples]
