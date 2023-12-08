@@ -21,12 +21,13 @@ import io
 import os
 import time
 
+import wandb
 import numpy as np
 import tensorflow as tf
 import tensorflow_gan as tfgan
 import logging
 # Keep the import below for registering all model definitions
-from models import ddpm, ncsnv2, ncsnpp
+from models import ddpm#, ncsnv2, ncsnpp
 import losses
 import sampling
 from models import utils as mutils
@@ -55,11 +56,6 @@ def train(config, workdir):
 
   # Create directories for experimental logs
   sample_dir = os.path.join(workdir, "samples")
-  tf.io.gfile.makedirs(sample_dir)
-
-  tb_dir = os.path.join(workdir, "tensorboard")
-  tf.io.gfile.makedirs(tb_dir)
-  writer = tensorboard.SummaryWriter(tb_dir)
 
   # Initialize model.
   score_model = mutils.create_model(config)
@@ -71,8 +67,8 @@ def train(config, workdir):
   checkpoint_dir = os.path.join(workdir, "checkpoints")
   # Intermediate checkpoints to resume training after pre-emption in cloud environments
   checkpoint_meta_dir = os.path.join(workdir, "checkpoints-meta", "checkpoint.pth")
-  tf.io.gfile.makedirs(checkpoint_dir)
-  tf.io.gfile.makedirs(os.path.dirname(checkpoint_meta_dir))
+  os.makedirs(checkpoint_dir, exist_ok=True)
+  os.makedirs(os.path.dirname(checkpoint_meta_dir), exist_ok=True)
   # Resume training when intermediate checkpoints are detected
   state = restore_checkpoint(checkpoint_meta_dir, state, config.device)
   initial_step = int(state['step'])
@@ -131,7 +127,8 @@ def train(config, workdir):
     loss = train_step_fn(state, batch)
     if step % config.training.log_freq == 0:
       logging.info("step: %d, training_loss: %.5e" % (step, loss.item()))
-      writer.add_scalar("training_loss", loss, step)
+      if not no_wandb:
+        wandb.log({"training_loss": loss})
 
     # Save a temporary checkpoint to resume training after pre-emption periodically
     if step != 0 and step % config.training.snapshot_freq_for_preemption == 0:
@@ -159,7 +156,7 @@ def train(config, workdir):
         sample, n = sampling_fn(score_model)
         ema.restore(score_model.parameters())
         this_sample_dir = os.path.join(sample_dir, "iter_{}".format(step))
-        tf.io.gfile.makedirs(this_sample_dir)
+        os.makedirs(this_sample_dir, exist_ok=True)
         nrow = int(np.sqrt(sample.shape[0]))
         image_grid = make_grid(sample, nrow, padding=2)
         sample = np.clip(sample.permute(0, 2, 3, 1).cpu().numpy() * 255, 0, 255).astype(np.uint8)
@@ -185,7 +182,7 @@ def evaluate(config,
   """
   # Create directory to eval_folder
   eval_dir = os.path.join(workdir, eval_folder)
-  tf.io.gfile.makedirs(eval_dir)
+  os.makedirs(eval_dir, exist_ok=True)
 
   # Build data pipeline
   train_ds, eval_ds, _ = datasets.get_dataset(config,
@@ -335,31 +332,31 @@ def evaluate(config,
         # Directory to save samples. Different for each host to avoid writing conflicts
         this_sample_dir = os.path.join(
           eval_dir, f"ckpt_{ckpt}")
-        tf.io.gfile.makedirs(this_sample_dir)
+        os.makedirs(this_sample_dir, exist_ok=True)
         samples, n = sampling_fn(score_model)
         samples = np.clip(samples.permute(0, 2, 3, 1).cpu().numpy() * 255., 0, 255).astype(np.uint8)
         samples = samples.reshape(
           (-1, config.data.image_size, config.data.image_size, config.data.num_channels))
-        # Write samples to disk or Google Cloud Storage
-        with tf.io.gfile.GFile(
-            os.path.join(this_sample_dir, f"samples_{r}.npz"), "wb") as fout:
-          io_buffer = io.BytesIO()
-          np.savez_compressed(io_buffer, samples=samples)
-          fout.write(io_buffer.getvalue())
+        # # Write samples to disk or Google Cloud Storage
+        # with tf.io.gfile.GFile(
+        #     os.path.join(this_sample_dir, f"samples_{r}.npz"), "wb") as fout:
+        #   io_buffer = io.BytesIO()
+        #   np.savez_compressed(io_buffer, samples=samples)
+        #   fout.write(io_buffer.getvalue())
 
-        # Force garbage collection before calling TensorFlow code for Inception network
-        gc.collect()
-        latents = evaluation.run_inception_distributed(samples, inception_model,
-                                                       inceptionv3=inceptionv3)
-        # Force garbage collection again before returning to JAX code
-        gc.collect()
-        # Save latent represents of the Inception network to disk or Google Cloud Storage
-        with tf.io.gfile.GFile(
-            os.path.join(this_sample_dir, f"statistics_{r}.npz"), "wb") as fout:
-          io_buffer = io.BytesIO()
-          np.savez_compressed(
-            io_buffer, pool_3=latents["pool_3"], logits=latents["logits"])
-          fout.write(io_buffer.getvalue())
+        # # Force garbage collection before calling TensorFlow code for Inception network
+        # gc.collect()
+        # latents = evaluation.run_inception_distributed(samples, inception_model,
+        #                                                inceptionv3=inceptionv3)
+        # # Force garbage collection again before returning to JAX code
+        # gc.collect()
+        # # Save latent represents of the Inception network to disk or Google Cloud Storage
+        # with tf.io.gfile.GFile(
+        #     os.path.join(this_sample_dir, f"statistics_{r}.npz"), "wb") as fout:
+        #   io_buffer = io.BytesIO()
+        #   np.savez_compressed(
+        #     io_buffer, pool_3=latents["pool_3"], logits=latents["logits"])
+        #   fout.write(io_buffer.getvalue())
 
       # Compute inception scores, FIDs and KIDs.
       # Load all statistics that have been previously computed and saved for each host
@@ -382,27 +379,6 @@ def evaluate(config,
       data_stats = evaluation.load_dataset_stats(config)
       data_pools = data_stats["pool_3"]
 
-      # Compute FID/KID/IS on all samples together.
-      if not inceptionv3:
-        inception_score = tfgan.eval.classifier_score_from_logits(all_logits)
-      else:
-        inception_score = -1
-
-      fid = tfgan.eval.frechet_classifier_distance_from_activations(
-        data_pools, all_pools)
-      # Hack to get tfgan KID work for eager execution.
-      tf_data_pools = tf.convert_to_tensor(data_pools)
-      tf_all_pools = tf.convert_to_tensor(all_pools)
-      kid = tfgan.eval.kernel_classifier_distance_from_activations(
-        tf_data_pools, tf_all_pools).numpy()
-      del tf_data_pools, tf_all_pools
-
       logging.info(
         "ckpt-%d --- inception_score: %.6e, FID: %.6e, KID: %.6e" % (
           ckpt, inception_score, fid, kid))
-
-      with tf.io.gfile.GFile(os.path.join(eval_dir, f"report_{ckpt}.npz"),
-                             "wb") as f:
-        io_buffer = io.BytesIO()
-        np.savez_compressed(io_buffer, IS=inception_score, fid=fid, kid=kid)
-        f.write(io_buffer.getvalue())
