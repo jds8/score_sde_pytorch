@@ -90,17 +90,17 @@ def get_sde_loss_fn(sde, train, reduce_mean=True, continuous=True, likelihood_we
 
     # TODO: remove
     # score = score_fn(perturbed_data.reshape(-1, 1), t.reshape(-1, 1))
-    score = score[:, 0, 0, 0]
-    z = z[:, 0, 0, 0]
+    # score = score[:, 0, 0, 0]
+    # z = z[:, 0, 0, 0]
 
     if not likelihood_weighting:
-      # losses = torch.square(score * std[:, None, None, None] + z)
-      losses = torch.square(score * std.reshape(score.shape) + z)
+      losses = torch.square(score * std[:, None, None, None] + z)
+      # losses = torch.square(score * std.reshape(score.shape) + z)
       losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1)
     else:
       g2 = sde.sde(torch.zeros_like(batch), t)[1] ** 2
-      # losses = torch.square(score + z / std[:, None, None, None])
-      losses = torch.square(score + z / std.reshape(z.shape))
+      losses = torch.square(score + z / std[:, None, None, None])
+      # losses = torch.square(score + z / std.reshape(z.shape))
       losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1) * g2
 
     loss = torch.mean(losses)

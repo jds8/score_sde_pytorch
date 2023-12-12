@@ -153,13 +153,13 @@ def train(config, workdir, no_wandb):
 
   # Building sampling functions
   if config.training.snapshot_sampling:
-    # sampling_shape = (config.training.batch_size, config.data.num_channels,
-    #                   config.data.image_size, config.data.image_size)
-    # sampling_fn = sampling.get_sampling_fn(config, sde, sampling_shape, inverse_scaler, sampling_eps)
+    sampling_shape = (config.training.batch_size, config.data.num_channels,
+                      config.data.image_size, config.data.image_size)
+    sampling_fn = sampling.get_sampling_fn(config, sde, sampling_shape, inverse_scaler, sampling_eps)
 
     # TODO: Remove
-    sampling_shape = (config.training.batch_size, 1, 1)
-    sampling_fn = sampling.get_sampling_fn(config, sde, sampling_shape, inverse_scaler, sampling_eps)
+    # sampling_shape = (config.training.batch_size, 1, 1)
+    # sampling_fn = sampling.get_sampling_fn(config, sde, sampling_shape, inverse_scaler, sampling_eps)
 
   num_train_steps = config.training.n_iters
 
@@ -167,12 +167,12 @@ def train(config, workdir, no_wandb):
   logging.info("Starting training loop at step %d." % (initial_step,))
 
   # TODO: Remove
-  total_samples = 60000
-  # all_samples = torch.randn(total_samples, 1, 1, device=config.device) * config.training.sigma + config.training.mu
-  all_samples = torch.randn(total_samples, 1, 1, 1, device=config.device) * config.training.sigma + config.training.mu
-  normal = torch.distributions.Normal(config.training.mu, config.training.sigma)
-  liks = normal.log_prob(all_samples).exp()
-  plot_liks(all_samples, liks)
+  # total_samples = 60000
+  # # all_samples = torch.randn(total_samples, 1, 1, device=config.device) * config.training.sigma + config.training.mu
+  # all_samples = torch.randn(total_samples, 1, 1, 1, device=config.device) * config.training.sigma + config.training.mu
+  # normal = torch.distributions.Normal(config.training.mu, config.training.sigma)
+  # liks = normal.log_prob(all_samples).exp()
+  # plot_liks(all_samples, liks)
 
   for step in range(initial_step, num_train_steps + 1):
     # Convert data to JAX arrays and normalize them. Use ._numpy() to avoid copy.
@@ -182,9 +182,9 @@ def train(config, workdir, no_wandb):
 
     # TODO: Remove
     # batch = torch.randn(batch.shape[0], 1, 1, device=config.device) * config.training.sigma + config.training.mu
-    batch_idx = torch.randint(0, total_samples, (batch.shape[0],))
+    # batch_idx = torch.randint(0, total_samples, (batch.shape[0],))
     # batch = all_samples[batch_idx]
-    batch = all_samples[batch_idx].repeat((1,) + batch.shape[1:])
+    # batch = all_samples[batch_idx].repeat((1,) + batch.shape[1:])
 
     # Execute one training step
     loss = train_step_fn(state, batch)
@@ -226,7 +226,7 @@ def train(config, workdir, no_wandb):
       save_step = step // config.training.snapshot_freq
       save_checkpoint(os.path.join(checkpoint_dir, f'checkpoint_{save_step}.pth'), state)
 
-      with torch.no_grad():
+      # with torch.no_grad():
         # score_function_heat_map(
         #   lambda x, time: score_fn(
         #     x=x.reshape(-1, 1, 1),
@@ -264,17 +264,17 @@ def train(config, workdir, no_wandb):
         #   make_gif=False,
         # )
 
-        t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - t_eps) + t_eps
-        # model_output = score_fn(x=batch, t=t.reshape(-1))
-        # model_output = score_fn(x=batch.reshape(-1, 1, 1, 1), t=t.reshape(-1))
-        model_output = score_fn(x=batch, t=t.reshape(-1))[:, 0, 0, 0]
-        score_error = compare_score(
-          x=batch[:, 0:1, 0:1, 0],
-          time=t,
-          model_output=model_output,
-          cfg=config,
-          no_wandb=no_wandb,
-        )
+        # t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - t_eps) + t_eps
+        # # model_output = score_fn(x=batch, t=t.reshape(-1))
+        # # model_output = score_fn(x=batch.reshape(-1, 1, 1, 1), t=t.reshape(-1))
+        # model_output = score_fn(x=batch, t=t.reshape(-1))[:, 0, 0, 0]
+        # score_error = compare_score(
+        #   x=batch[:, 0:1, 0:1, 0],
+        #   time=t,
+        #   model_output=model_output,
+        #   cfg=config,
+        #   no_wandb=no_wandb,
+        # )
 
         # t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - t_eps) + t_eps
         # model_output = score_fn(x=batch.reshape(-1, 1), t=t.reshape(-1, 1))
@@ -285,7 +285,7 @@ def train(config, workdir, no_wandb):
         #   cfg=config,
         #   no_wandb=no_wandb,
         # )
-        logging.info("score error: {}".format(score_error))
+        # logging.info("score error: {}".format(score_error))
 
       # Generate and save samples
       if config.training.snapshot_sampling:

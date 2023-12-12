@@ -36,8 +36,8 @@ def get_config():
   training.likelihood_weighting = False
 
   evaluate = config.eval
-  evaluate.begin_ckpt = 1
-  evaluate.end_ckpt = 1
+  evaluate.begin_ckpt = 2
+  evaluate.end_ckpt = 2
   evaluate.enable_sampling = True
   evaluate.num_samples = 1
   evaluate.enable_loss = False
