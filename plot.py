@@ -7,6 +7,12 @@ import matplotlib.pyplot as plt
 import re
 
 
+def plot_liks(samples, liks, prefix=''):
+    saps = samples.squeeze().detach().cpu().numpy()
+    lks = liks.squeeze().detach().cpu().numpy()
+    plt.scatter(saps, lks)
+    plt.savefig('figs/{}density.pdf'.format(prefix))
+
 def atoi(text):
     return int(text) if text.isdigit() else text
 
@@ -54,7 +60,15 @@ def score_function_heat_map(
     grid_t, grid_x = torch.meshgrid(ts, xs, indexing='ij')
     input_x = grid_x.reshape(-1, 1, 1)
     input_t = grid_t.reshape(-1)
+
+    # TODO: Remove
+    input_x = xs.reshape(-1, 1, 1, 1).repeat(1, 3, 32, 32)
+    input_t = ts.reshape(-1)
+
     scores = score_function(x=input_x, time=input_t)
+
+    # TODO: Remove
+    scores = scores[:, 0, 0, 0]
 
     fig, ax = plt.subplots()
     mesh_x = xs.cpu().numpy()

@@ -24,42 +24,43 @@ def get_config():
 
   # training
   training = config.training
-  training.batch_size = 512
+  training.batch_size = 128
   training.sde = 'vpsde'
   training.continuous = True
   training.reduce_mean = True
   training.restore_checkpoint = False
   training.mu = 0.
   training.sigma = 1.
-  training.snapshot_freq = 500
+  training.snapshot_freq = 5
   training.snapshot_sampling = False
   training.likelihood_weighting = False
 
   evaluate = config.eval
-  evaluate.begin_ckpt = 200
-  evaluate.end_ckpt = 200
+  evaluate.begin_ckpt = 24
+  evaluate.end_ckpt = 24
   evaluate.enable_sampling = True
-  evaluate.num_samples = 100
+  evaluate.num_samples = 10
   evaluate.enable_loss = False
   evaluate.enable_bpd = False
   evaluate.use_bpd = False
+  evaluate.use_analytical_score = True
 
   # sampling
   sampling = config.sampling
   sampling.method = 'ode'
-  sampling.predictor = 'none'
-  sampling.corrector = 'none'
+  sampling.predictor = 'euler_maruyama'
+  sampling.corrector = 'langevin'
   sampling.noise_removal = False
   sampling.probability_flow = True
 
   # data
   data = config.data
   data.centered = True
-  data.num_channels = 1
+  data.num_channels = 3
 
   # model
   model = config.model
-  model.name = 'nnet'
+  model.name = 'ddpm'
   model.scale_by_sigma = False
   model.ema_rate = 0.9999
   model.normalization = 'GroupNorm'

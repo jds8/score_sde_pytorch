@@ -93,6 +93,7 @@ def get_likelihood_fn(sde, inverse_scaler, hutchinson_type='Rademacher',
         vec_t = torch.ones(sample.shape[0], device=sample.device) * t
         drift = mutils.to_flattened_numpy(drift_fn(model, sample, vec_t))
         logp_grad = mutils.to_flattened_numpy(div_fn(model, sample, vec_t, epsilon))
+        import pdb; pdb.set_trace()
         return np.concatenate([drift, logp_grad], axis=0)
 
       init = np.concatenate([mutils.to_flattened_numpy(data), np.zeros((shape[0],))], axis=0)
@@ -112,6 +113,7 @@ def get_likelihood_fn(sde, inverse_scaler, hutchinson_type='Rademacher',
         output = bpd
       else:
         output = prior_logp + delta_logp
+      import pdb; pdb.set_trace()
       return output, z, nfe
 
   return likelihood_fn

@@ -156,9 +156,10 @@ def get_score_fn(sde, model, train=False, continuous=False):
         model_out = model_fn(x, labels)
         std = sde.sqrt_1m_alphas_cumprod.to(labels.device)[labels.long()]
 
-      # score = -model_out / std[:, None, None, None]
-      score = -model_out / std.reshape(model_out.shape)
-      
+      score = -model_out / std[:, None, None, None]
+      # score = -model_out / std.reshape(model_out.shape)
+      # print('std divide: {}'.format(std.squeeze()))
+
       # # TODO: REMOVE
       # score = -model_out / std
       # assert score.shape == model_out.shape

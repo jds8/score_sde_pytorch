@@ -464,11 +464,15 @@ def get_ode_sampler(sde, shape, inverse_scaler,
       if z is None:
         # If not represent, sample the latent code from the prior distibution of the SDE.
         x = sde.prior_sampling(shape).to(device)
+
+        # TODO: Remove
+        x = x[:, 0, 0, 0].reshape(-1, 1, 1, 1).repeat(1, 3, 32, 32)
       else:
         x = z
 
       def ode_func(t, x):
         x = from_flattened_numpy(x, shape).to(device).type(torch.float32)
+        x = x[:, 0, 0, 0].reshape(-1, 1, 1, 1).repeat(1, 3, 32, 32)
         vec_t = torch.ones(shape[0], device=x.device) * t
         drift = drift_fn(model, x, vec_t)
         return to_flattened_numpy(drift)

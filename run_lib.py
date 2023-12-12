@@ -37,13 +37,23 @@ import likelihood
 import sde_lib
 from absl import flags
 import torch
+import torch.nn as nn
 from torch.utils import tensorboard
 from torchvision.utils import make_grid, save_image
 from utils import save_checkpoint, restore_checkpoint
 import tensorflow as tf
-from plot import score_function_heat_map
+from plot import score_function_heat_map, plot_liks
 
 FLAGS = flags.FLAGS
+
+
+class EpsModel(nn.Module):
+  def __init__(self, model):
+    super(EpsModel, self).__init__()
+    self.model = model
+
+  def forward(self, x, t):
+    return self.model(x=x, t=t)
 
 
 def log_mean_coeff(x_shape: torch.Size, t: torch.Tensor):
@@ -155,6 +165,14 @@ def train(config, workdir, no_wandb):
   # In case there are multiple hosts (e.g., TPU pods), only log to host 0
   logging.info("Starting training loop at step %d." % (initial_step,))
 
+  # TODO: Remove
+  total_samples = 60000
+  # all_samples = torch.randn(total_samples, 1, 1, device=config.device) * config.training.sigma + config.training.mu
+  all_samples = torch.randn(total_samples, 1, 1, 1, device=config.device) * config.training.sigma + config.training.mu
+  normal = torch.distributions.Normal(config.training.mu, config.training.sigma)
+  liks = normal.log_prob(all_samples).exp()
+  plot_liks(all_samples, liks)
+
   for step in range(initial_step, num_train_steps + 1):
     # Convert data to JAX arrays and normalize them. Use ._numpy() to avoid copy.
     batch = torch.from_numpy(next(train_iter)['image']._numpy()).to(config.device).float()
@@ -162,7 +180,10 @@ def train(config, workdir, no_wandb):
     batch = scaler(batch)
 
     # TODO: Remove
-    batch = torch.randn(batch.shape[0], 1, 1, device=config.device) * config.training.sigma + config.training.mu
+    # batch = torch.randn(batch.shape[0], 1, 1, device=config.device) * config.training.sigma + config.training.mu
+    batch_idx = torch.randint(0, total_samples, (batch.shape[0],))
+    # batch = all_samples[batch_idx]
+    batch = all_samples[batch_idx].repeat((1,) + batch.shape[1:])
 
     # Execute one training step
     loss = train_step_fn(state, batch)
@@ -190,7 +211,7 @@ def train(config, workdir, no_wandb):
       eval_batch = scaler(eval_batch)
 
       # TODO: Remove
-      eval_batch = torch.randn(eval_batch.shape[0], 1, 1, device=config.device) * config.training.sigma + config.training.mu
+      # eval_batch = torch.randn(eval_batch.shape[0], 1, 1, device=config.device) * config.training.sigma + config.training.mu
 
       eval_loss = eval_step_fn(state, eval_batch)
       logging.info("step: %d, eval_loss: %.5e" % (step, eval_loss.item()))
@@ -204,51 +225,65 @@ def train(config, workdir, no_wandb):
       save_step = step // config.training.snapshot_freq
       save_checkpoint(os.path.join(checkpoint_dir, f'checkpoint_{save_step}.pth'), state)
 
-      score_function_heat_map(
-        lambda x, time: score_fn(
-          x=x.reshape(-1, 1, 1),
-          t=time.reshape(-1),
-        ),
-        step,
-        t_eps=t_eps,
-        device=batch.device,
-        mu=config.training.mu,
-        sigma=config.training.sigma,
-        make_gif=False,
-      )
-      # score_function_heat_map(
-      #   lambda x, time: score_fn(
-      #     x=x.reshape(-1, 1),
-      #     t=time.reshape(-1, 1),
-      #   ),
-      #   step,
-      #   t_eps=t_eps,
-      #   device=batch.device,
-      #   mu=config.training.mu,
-      #   sigma=config.training.sigma,
-      #   make_gif=False,
-      # )
+      with torch.no_grad():
+        # score_function_heat_map(
+        #   lambda x, time: score_fn(
+        #     x=x.reshape(-1, 1, 1),
+        #     t=time.reshape(-1),
+        #   ),
+        #   step,
+        #   t_eps=t_eps,
+        #   device=batch.device,
+        #   mu=config.training.mu,
+        #   sigma=config.training.sigma,
+        #   make_gif=False,
+        # )
+        # score_function_heat_map(
+        #   lambda x, time: score_fn(
+        #     x=x.reshape(-1, 1),
+        #     t=time.reshape(-1, 1),
+        #   ),
+        #   step,
+        #   t_eps=t_eps,
+        #   device=batch.device,
+        #   mu=config.training.mu,
+        #   sigma=config.training.sigma,
+        #   make_gif=False,
+        # )
+        # score_function_heat_map(
+        #   lambda x, time: score_fn(
+        #     x=x.reshape(-1, 1, 1, 1).repeat(1, 3, 32, 32),
+        #     t=time.reshape(-1),
+        #   ),
+        #   step,
+        #   t_eps=t_eps,
+        #   device=batch.device,
+        #   mu=config.training.mu,
+        #   sigma=config.training.sigma,
+        #   make_gif=False,
+        # )
 
-      t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - t_eps) + t_eps
-      model_output = score_fn(x=batch, t=t.reshape(-1))
-      # model_output = score_fn(x=batch.reshape(-1, 1, 1, 1), t=t.reshape(-1))
-      compare_score(
-        x=batch,
-        time=t,
-        model_output=model_output,
-        cfg=config,
-        no_wandb=no_wandb,
-      )
+        t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - t_eps) + t_eps
+        # model_output = score_fn(x=batch, t=t.reshape(-1))
+        # model_output = score_fn(x=batch.reshape(-1, 1, 1, 1), t=t.reshape(-1))
+        # model_output = score_fn(x=batch, t=t.reshape(-1))[:, 0, 0, 0]
+        # compare_score(
+        #   x=batch,
+        #   time=t,
+        #   model_output=model_output,
+        #   cfg=config,
+        #   no_wandb=no_wandb,
+        # )
 
-      # t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - t_eps) + t_eps
-      # model_output = score_fn(x=batch.reshape(-1, 1), t=t.reshape(-1, 1))
-      # compare_score(
-      #   x=batch,
-      #   time=t,
-      #   model_output=model_output,
-      #   cfg=config,
-      #   no_wandb=no_wandb,
-      # )
+        # t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - t_eps) + t_eps
+        # model_output = score_fn(x=batch.reshape(-1, 1), t=t.reshape(-1, 1))
+        # compare_score(
+        #   x=batch,
+        #   time=t,
+        #   model_output=model_output,
+        #   cfg=config,
+        #   no_wandb=no_wandb,
+        # )
 
       # Generate and save samples
       if config.training.snapshot_sampling:
@@ -350,11 +385,11 @@ def evaluate(config,
     sampling_shape = (config.eval.batch_size,
                       config.data.num_channels,
                       config.data.image_size, config.data.image_size)
-    # sampling_fn = sampling.get_sampling_fn(config, sde, sampling_shape, inverse_scaler, sampling_eps)
-
-    # TODO: Remove
-    sampling_shape = (config.training.batch_size, 1, 1)
     sampling_fn = sampling.get_sampling_fn(config, sde, sampling_shape, inverse_scaler, sampling_eps)
+
+    # # TODO: Remove
+    # sampling_shape = (config.training.batch_size, 1, 1)
+    # sampling_fn = sampling.get_sampling_fn(config, sde, sampling_shape, inverse_scaler, sampling_eps)
 
   # Use inceptionV3 for images with resolution higher than 256.
   inceptionv3 = config.data.image_size >= 256
@@ -416,12 +451,35 @@ def evaluate(config,
           eval_batch = scaler(eval_batch)
 
           # TODO: Remove
-          eval_batch = torch.randn(eval_batch.shape[0], 1, 1, device=config.device) * config.training.sigma + config.training.mu
+          # eval_batch = torch.randn(eval_batch.shape[0], 1, 1, device=config.device) * config.training.sigma + config.training.mu
+          eval_batch = torch.randn(eval_batch.shape[0], 1, 1, 1, device=config.device) * config.training.sigma + config.training.mu
+          lst = [
+            config.training.mu - 3*config.training.sigma,
+            config.training.mu - 2*config.training.sigma,
+            config.training.mu - 1*config.training.sigma,
+            config.training.mu,
+            config.training.mu + 1*config.training.sigma,
+            config.training.mu + 2*config.training.sigma,
+            config.training.mu + 3*config.training.sigma,
+          ]
+          eval_batch = torch.tensor(lst, device=eval_batch.device).reshape((-1,) + eval_batch.shape[1:])
 
           print('eval_batch: {}'.format(eval_batch.squeeze()))
           normal = torch.distributions.Normal(config.training.mu, config.training.sigma)
           print('log likelihood: {}'.format(normal.log_prob(eval_batch.squeeze())))
 
+          if config.eval.use_analytical_score:
+            def analytical_eps(x, t):
+              analytical_score = analytical_gaussian_score(
+                t=t,
+                x=x,
+                cfg=config
+              )
+              _, _, std = marginal_prob(x=x, t=t)
+              print('std t: {}'.format(t.squeeze()))
+              print('std multiply: {}'.format(std.squeeze()))
+              return -std * analytical_score
+            score_model = EpsModel(analytical_eps)
           bpd = likelihood_fn(score_model, eval_batch, use_bpd=config.eval.use_bpd)[0]
           import pdb; pdb.set_trace()
           bpd = bpd.detach().cpu().numpy().reshape(-1)
