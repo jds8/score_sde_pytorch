@@ -86,6 +86,7 @@ def compare_score(x, time, model_output, cfg, no_wandb=True):
   error = (true_sf.squeeze() - sf_estimate.detach().squeeze()).norm()
   if not no_wandb:
     wandb.log({"score error": error})
+  return error
 
 def train(config, workdir, no_wandb):
   """Runs the training pipeline.
@@ -266,24 +267,25 @@ def train(config, workdir, no_wandb):
         t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - t_eps) + t_eps
         # model_output = score_fn(x=batch, t=t.reshape(-1))
         # model_output = score_fn(x=batch.reshape(-1, 1, 1, 1), t=t.reshape(-1))
-        # model_output = score_fn(x=batch, t=t.reshape(-1))[:, 0, 0, 0]
-        # compare_score(
-        #   x=batch,
-        #   time=t,
-        #   model_output=model_output,
-        #   cfg=config,
-        #   no_wandb=no_wandb,
-        # )
+        model_output = score_fn(x=batch, t=t.reshape(-1))[:, 0, 0, 0]
+        score_error = compare_score(
+          x=batch[:, 0:1, 0:1, 0],
+          time=t,
+          model_output=model_output,
+          cfg=config,
+          no_wandb=no_wandb,
+        )
 
         # t = torch.rand(batch.shape[0], device=batch.device) * (sde.T - t_eps) + t_eps
         # model_output = score_fn(x=batch.reshape(-1, 1), t=t.reshape(-1, 1))
-        # compare_score(
+        # score_error = compare_score(
         #   x=batch,
         #   time=t,
         #   model_output=model_output,
         #   cfg=config,
         #   no_wandb=no_wandb,
         # )
+        logging.info("score error: {}".format(score_error))
 
       # Generate and save samples
       if config.training.snapshot_sampling:

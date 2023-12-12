@@ -31,15 +31,15 @@ def get_config():
   training.restore_checkpoint = False
   training.mu = 0.
   training.sigma = 1.
-  training.snapshot_freq = 5
+  training.snapshot_freq = 500
   training.snapshot_sampling = False
   training.likelihood_weighting = False
 
   evaluate = config.eval
-  evaluate.begin_ckpt = 24
-  evaluate.end_ckpt = 24
+  evaluate.begin_ckpt = 1
+  evaluate.end_ckpt = 1
   evaluate.enable_sampling = True
-  evaluate.num_samples = 10
+  evaluate.num_samples = 1
   evaluate.enable_loss = False
   evaluate.enable_bpd = False
   evaluate.use_bpd = False
